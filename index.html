@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PH Tube</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .duration-badge {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+        }
+        .modal-content {
+            position: relative;
+            background-color: white;
+            margin: 10% auto;
+            padding: 20px;
+            width: 80%;
+            max-width: 800px;
+            border-radius: 8px;
+        }
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .no-videos {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Navbar -->
+    <nav class="bg-white shadow-md border-b border-gray-200 py-4 px-6 md:px-12">
+        <div class="container mx-auto flex flex-col md:flex-row items-center justify-between">
+            <!-- Logo -->
+            <div class="flex items-center mb-4 md:mb-0">
+                <svg class="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 0C4.5 0 0 4.5 0 10s4.5 10 10 10 10-4.5 10-10S15.5 0 10 0zm3.5 10.5l-5 3c-.2.1-.5 0-.7-.2-.2-.2-.3-.4-.3-.6v-6c0-.2.1-.4.3-.6.2-.2.5-.3.7-.2l5 3c.2.1.3.4.3.6s-.1.5-.3.6z"/>
+                </svg>
+                <span class="ml-2 text-2xl font-bold"><span class="text-red-500">PH</span> Tube</span>
+            </div>
+            
+            <!-- Search Box -->
+            <div class="flex items-center mb-4 md:mb-0 w-full md:w-1/2 max-w-xl">
+                <input type="text" id="searchInput" placeholder="Search videos..." class="border border-gray-300 rounded-l-md py-2 px-4 w-full focus:outline-none focus:ring-2 focus:ring-red-500">
+                <button id="searchBtn" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-r-md hover:bg-gray-300 focus:outline-none">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+            
+            <!-- Sort Button -->
+            <button id="sortBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-4 rounded-md focus:outline-none">
+                Sort by view
+            </button>
+        </div>
+    </nav>
+
+    <!-- Category Section -->
+    <section class="py-6">
+        <div id="categoryContainer" class="container mx-auto flex flex-wrap justify-center gap-3">
+            <!-- Categories will be loaded here -->
+        </div>
+    </section>
+
+    <!-- Video Container -->
+    <section class="py-6">
+        <div id="videoContainer" class="container mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 px-4 md:px-0">
+            <!-- Videos will be loaded here -->
+        </div>
+        
+        <!-- No Videos Message -->
+        <div id="noVideosContainer" class="container mx-auto no-videos hidden">
+            <img src="./Icon.png" alt="No Videos" class="w-32 h-32 mb-4">
+            <h2 class="text-3xl font-bold text-center text-gray-700">Oops!! Sorry, There is no content here</h2>
+        </div>
+    </section>
+
+    <!-- Video Details Modal -->
+    <div id="videoModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <div id="modalContent">
+                <!-- Modal content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let allVideos = [];
+        let filteredVideos = [];
+        let activeCategory = null;
+        let isSorted = false;
+        let videosLoaded = false;  // Flag to track if videos are loaded
+
+        // DOM Elements
+        const categoryContainer = document.getElementById('categoryContainer');
+        const videoContainer = document.getElementById('videoContainer');
+        const noVideosContainer = document.getElementById('noVideosContainer');
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const sortBtn = document.getElementById('sortBtn');
+        const videoModal = document.getElementById('videoModal');
+        const modalContent = document.getElementById('modalContent');
+        const closeBtn = document.querySelector('.close-btn');
+
+        // API URLs
+        const CATEGORIES_API = 'https://openapi.programming-hero.com/api/phero-tube/categories';
+        const VIDEOS_API = 'https://openapi.programming-hero.com/api/phero-tube/videos';
+        const CATEGORY_VIDEOS_API = 'https://openapi.programming-hero.com/api/phero-tube/category/';
+        const VIDEO_DETAILS_API = 'https://openapi.programming-hero.com/api/phero-tube/video/';
+
+        // Fetch categories and videos on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            await fetchCategories();
+            await fetchAllVideos();
+            videosLoaded = true;  // Set flag when videos are loaded
+            displayVideos(allVideos);
+        });
+
+        // Event Listeners
+        searchBtn.addEventListener('click', handleSearch);
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleSearch();
+            }
+        });
+        sortBtn.addEventListener('click', handleSort);
+        closeBtn.addEventListener('click', closeModal);
+        window.addEventListener('click', (e) => {
+            if (e.target === videoModal) {
+                closeModal();
+            }
+        });
+
+        // Functions
+        async function fetchCategories() {
+            try {
+                // Add "All" category
+                const allCategoryBtn = document.createElement('button');
+                allCategoryBtn.textContent = 'All';
+                allCategoryBtn.className = 'category-btn bg-red-500 text-white py-2 px-5 rounded-md active';
+                allCategoryBtn.dataset.id = 'all';
+                allCategoryBtn.addEventListener('click', () => handleCategoryClick('all'));
+                categoryContainer.appendChild(allCategoryBtn);
+                
+                // Add the specific categories you want
+                const customCategories = [
+                    { category_id: 'music', category: 'Music' },
+                    { category_id: 'comedy', category: 'Comedy' },
+                    { category_id: 'drawing', category: 'Drawing' }
+                ];
+                
+                customCategories.forEach(category => {
+                    const categoryBtn = document.createElement('button');
+                    categoryBtn.textContent = category.category;
+                    categoryBtn.className = 'category-btn bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-5 rounded-md';
+                    categoryBtn.dataset.id = category.category_id;
+                    categoryBtn.addEventListener('click', () => handleCategoryClick(category.category_id));
+                    categoryContainer.appendChild(categoryBtn);
+                });
+                
+                // You can still try to fetch categories from API if you want to add them alongside your custom ones
+                const response = await fetch(CATEGORIES_API);
+                const data = await response.json();
+                
+                if (data && data.data && Array.isArray(data.data)) {
+                    // Filter out any duplicates that might match your custom categories
+                    const apiCategories = data.data.filter(apiCat => 
+                        !customCategories.some(customCat => 
+                            customCat.category_id === apiCat.category_id || 
+                            customCat.category.toLowerCase() === apiCat.category.toLowerCase()
+                        )
+                    );
+                    
+                    // Comment out this part if you only want your custom categories
+                    /*
+                    apiCategories.forEach(category => {
+                        const categoryBtn = document.createElement('button');
+                        categoryBtn.textContent = category.category;
+                        categoryBtn.className = 'category-btn bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-5 rounded-md';
+                        categoryBtn.dataset.id = category.category_id;
+                        categoryBtn.addEventListener('click', () => handleCategoryClick(category.category_id));
+                        categoryContainer.appendChild(categoryBtn);
+                    });
+                    */
+                }
+            } catch (error) {
+                console.error('Error fetching categories:', error);
+                
+                // If API fails, at least ensure we have our custom categories
+                const customCategories = [
+                    { category_id: 'music', category: 'Music' },
+                    { category_id: 'comedy', category: 'Comedy' },
+                    { category_id: 'drawing', category: 'Drawing' }
+                ];
+                
+                customCategories.forEach(category => {
+                    const categoryBtn = document.createElement('button');
+                    categoryBtn.textContent = category.category;
+                    categoryBtn.className = 'category-btn bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-5 rounded-md';
+                    categoryBtn.dataset.id = category.category_id;
+                    categoryBtn.addEventListener('click', () => handleCategoryClick(category.category_id));
+                    categoryContainer.appendChild(categoryBtn);
+                });
+            }
+        }
+
+        async function fetchAllVideos() {
+            try {
+                const response = await fetch(VIDEOS_API);
+                const data = await response.json();
+                
+                // Check different possible data structures
+                if (data && data.videos && Array.isArray(data.videos)) {
+                    // Handle {status, message, videos} format
+                    allVideos = data.videos;
+                    filteredVideos = [...allVideos];
+                    console.log('Videos loaded from videos property:', allVideos.length);
+                } else if (data && data.data && Array.isArray(data.data)) {
+                    // Handle {data} format
+                    allVideos = data.data;
+                    filteredVideos = [...allVideos];
+                    console.log('Videos loaded from data property:', allVideos.length);
+                } else {
+                    console.error('Invalid data format received:', data);
+                    allVideos = [];
+                    filteredVideos = [];
+                }
+            } catch (error) {
+                console.error('Error fetching videos:', error);
+                allVideos = [];
+                filteredVideos = [];
+            }
+        }
+
+        async function fetchCategoryVideos(categoryId) {
+            try {
+                const response = await fetch(`${CATEGORY_VIDEOS_API}${categoryId}`);
+                const data = await response.json();
+                
+                // Check different possible data structures
+                if (data && data.videos && Array.isArray(data.videos)) {
+                    return data.videos;
+                } else if (data && data.data && Array.isArray(data.data)) {
+                    return data.data;
+                }
+                return [];
+            } catch (error) {
+                console.error('Error fetching category videos:', error);
+                return [];
+            }
+        }
+
+        async function fetchVideoDetails(videoId) {
+            try {
+                const response = await fetch(`${VIDEO_DETAILS_API}${videoId}`);
+                const data = await response.json();
+                
+                // Check different possible data structures
+                if (data && data.data) {
+                    return data.data;
+                } else if (data && data.video) {
+                    return data.video;
+                }
+                return null;
+            } catch (error) {
+                console.error('Error fetching video details:', error);
+                return null;
+            }
+        }
+
+        async function handleCategoryClick(categoryId) {
+            // Update active category button
+            const categoryBtns = document.querySelectorAll('.category-btn');
+            categoryBtns.forEach(btn => {
+                if (btn.dataset.id === categoryId) {
+                    btn.classList.add('bg-red-500', 'text-white');
+                    btn.classList.remove('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+                } else {
+                    btn.classList.remove('bg-red-500', 'text-white');
+                    btn.classList.add('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+                }
+            });
+
+            // Set the active category
+            activeCategory = categoryId;
+            
+            // Reset sort and search
+            isSorted = false;
+            sortBtn.classList.remove('bg-red-500', 'text-white');
+            sortBtn.classList.add('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+            searchInput.value = '';
+            
+            // Fetch and display videos
+            if (categoryId === 'all') {
+                filteredVideos = [...allVideos];
+                displayVideos(filteredVideos);
+            } else {
+                try {
+                    // First try to fetch from API
+                    const apiVideos = await fetchCategoryVideos(categoryId);
+                    
+                    // If API returned videos, use them
+                    if (apiVideos && apiVideos.length > 0) {
+                        filteredVideos = apiVideos;
+                        displayVideos(filteredVideos);
+                        return;
+                    }
+                    
+                    // If no videos from API, try more aggressive local filtering
+                    const categoryBtn = document.querySelector(`.category-btn[data-id="${categoryId}"]`);
+                    const categoryName = categoryBtn ? categoryBtn.textContent.toLowerCase() : categoryId;
+                    
+                    // First, try exact category match
+                    let localFiltered = allVideos.filter(video => {
+                        // Exact category match
+                        if (video.category && video.category.toLowerCase() === categoryName) {
+                            return true;
+                        }
+                        
+                        // Exact tag match
+                        if (video.tags && Array.isArray(video.tags)) {
+                            return video.tags.some(tag => tag.toLowerCase() === categoryName);
+                        }
+                        
+                        return false;
+                    });
+                    
+                    // If no exact matches, try partial matches
+                    if (!localFiltered || localFiltered.length === 0) {
+                        localFiltered = allVideos.filter(video => {
+                            // Title contains category name
+                            if (video.title && video.title.toLowerCase().includes(categoryName)) {
+                                return true;
+                            }
+                            
+                            // Category contains category name
+                            if (video.category && video.category.toLowerCase().includes(categoryName)) {
+                                return true;
+                            }
+                            
+                            // Tags contain category name
+                            if (video.tags && Array.isArray(video.tags)) {
+                                return video.tags.some(tag => tag.toLowerCase().includes(categoryName));
+                            }
+                            
+                            // Description contains category name (if available)
+                            if (video.description && video.description.toLowerCase().includes(categoryName)) {
+                                return true;
+                            }
+                            
+                            return false;
+                        });
+                    }
+                    
+                    // If still nothing found, last resort: check if any video metadata has this category text
+                    if (!localFiltered || localFiltered.length === 0) {
+                        localFiltered = allVideos.filter(video => {
+                            // Convert the entire video object to a string and check for the category name
+                            return JSON.stringify(video).toLowerCase().includes(categoryName);
+                        });
+                    }
+                    
+                    filteredVideos = localFiltered;
+                    displayVideos(filteredVideos);
+                } catch (error) {
+                    console.error('Error filtering videos by category:', error);
+                    filteredVideos = [];
+                    displayVideos(filteredVideos);
+                }
+            }
+        }
+
+        function displayVideos(videos) {
+            videoContainer.innerHTML = '';
+            
+            if (!videos || videos.length === 0) {
+                videoContainer.classList.add('hidden');
+                noVideosContainer.classList.remove('hidden');
+            } else {
+                videoContainer.classList.remove('hidden');
+                noVideosContainer.classList.add('hidden');
+                
+                videos.forEach(video => {
+                    if (video) {  // Check if video object exists
+                        const videoCard = createVideoCard(video);
+                        if (videoCard) {
+                            videoContainer.appendChild(videoCard);
+                        }
+                    }
+                });
+                
+                // Check if we ended up with any videos
+                if (videoContainer.children.length === 0) {
+                    videoContainer.classList.add('hidden');
+                    noVideosContainer.classList.remove('hidden');
+                }
+            }
+        }
+
+        function createVideoCard(video) {
+            if (!video) return null;
+            
+            const { thumbnail, title, authors, others } = video;
+            
+            if (!thumbnail || !title || !authors || !authors[0] || !others) {
+                console.error('Invalid video data structure:', video);
+                return null;
+            }
+            
+            const { views, posted_date } = others;
+            
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-lg shadow-md overflow-hidden cursor-pointer';
+            card.dataset.id = video.id || video._id;
+            card.addEventListener('click', () => showVideoDetails(video.id || video._id));
+            
+            // Thumbnail container with duration
+            const thumbnailContainer = document.createElement('div');
+            thumbnailContainer.className = 'relative';
+            
+            const thumbnailImg = document.createElement('img');
+            thumbnailImg.src = thumbnail;
+            thumbnailImg.alt = title;
+            thumbnailImg.className = 'w-full h-48 object-cover';
+            thumbnailContainer.appendChild(thumbnailImg);
+            
+            // Add duration badge if available
+            if (posted_date) {
+                const duration = formatDuration(posted_date);
+                if (duration) {
+                    const durationBadge = document.createElement('div');
+                    durationBadge.className = 'duration-badge';
+                    durationBadge.textContent = duration;
+                    thumbnailContainer.appendChild(durationBadge);
+                }
+            }
+            
+            card.appendChild(thumbnailContainer);
+            
+            // Card Content
+            const cardContent = document.createElement('div');
+            cardContent.className = 'p-4';
+            
+            // Author info with avatar
+            const authorContainer = document.createElement('div');
+            authorContainer.className = 'flex mb-3';
+            
+            const authorAvatar = document.createElement('img');
+            authorAvatar.src = authors[0].profile_picture;
+            authorAvatar.alt = authors[0].profile_name;
+            authorAvatar.className = 'w-10 h-10 rounded-full mr-3';
+            authorContainer.appendChild(authorAvatar);
+            
+            const authorInfo = document.createElement('div');
+            authorInfo.className = 'flex-1';
+            
+            const videoTitle = document.createElement('h3');
+            videoTitle.className = 'font-semibold text-lg mb-1';
+            videoTitle.textContent = title;
+            authorInfo.appendChild(videoTitle);
+            
+            const authorName = document.createElement('p');
+            authorName.className = 'text-gray-600 flex items-center gap-2';
+            authorName.textContent = authors[0].profile_name;
+            
+            // Add verified badge if verified
+            if (authors[0].verified) {
+                const verifiedBadge = document.createElement('span');
+                verifiedBadge.innerHTML = '✓';
+                verifiedBadge.className = 'text-blue-500 bg-blue-100 rounded-full w-5 h-5 flex items-center justify-center text-xs';
+                authorName.appendChild(verifiedBadge);
+            }
+            
+            authorInfo.appendChild(authorName);
+            
+            // Views
+            const viewsText = document.createElement('p');
+            viewsText.className = 'text-gray-600 text-sm mt-1';
+            viewsText.textContent = `${views} views`;
+            authorInfo.appendChild(viewsText);
+            
+            authorContainer.appendChild(authorInfo);
+            cardContent.appendChild(authorContainer);
+            
+            card.appendChild(cardContent);
+            
+            return card;
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds) return null;
+            
+            // Convert seconds string to number
+            const totalSeconds = parseInt(seconds);
+            if (isNaN(totalSeconds) || totalSeconds <= 0) return null;
+            
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            
+            if (hours > 0) {
+                return `${hours}hrs ${minutes}min ago`;
+            } else if (minutes > 0) {
+                return `${minutes}min ago`;
+            } else {
+                return null;
+            }
+        }
+
+        async function showVideoDetails(videoId) {
+            const videoDetails = await fetchVideoDetails(videoId);
+            if (!videoDetails) return;
+            
+            const { title, description, authors, thumbnail, others } = videoDetails;
+            
+            if (!title || !authors || !authors[0] || !thumbnail || !others) {
+                console.error('Invalid video details structure:', videoDetails);
+                return;
+            }
+            
+            const { views } = others;
+            
+            modalContent.innerHTML = `
+                <div class="mb-6">
+                    <img src="${thumbnail}" alt="${title}" class="w-full h-64 object-cover rounded-lg mb-4">
+                    <h2 class="text-2xl font-bold mb-2">${title}</h2>
+                    <div class="flex items-center mb-4">
+                        <img src="${authors[0].profile_picture}" alt="${authors[0].profile_name}" class="w-10 h-10 rounded-full mr-3">
+                        <div>
+                            <p class="font-semibold flex items-center gap-2">
+                                ${authors[0].profile_name}
+                                ${authors[0].verified ? '<span class="text-blue-500 bg-blue-100 rounded-full w-5 h-5 flex items-center justify-center text-xs">✓</span>' : ''}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="bg-gray-100 p-4 rounded-lg mb-4">
+                        <p class="text-gray-700">${views} views</p>
+                    </div>
+                    <p class="text-gray-700">${description || 'No description available.'}</p>
+                </div>
+            `;
+            
+            videoModal.style.display = 'block';
+        }
+
+        function closeModal() {
+            videoModal.style.display = 'none';
+        }
+
+        async function handleSearch() {
+            const searchTerm = searchInput.value.trim().toLowerCase();
+            
+            // Make sure allVideos is loaded before filtering
+            if (!videosLoaded || !allVideos || allVideos.length === 0) {
+                await fetchAllVideos();
+                videosLoaded = true;
+            }
+            
+            if (searchTerm === '') {
+                // If search is empty, revert to the active category or all videos
+                if (activeCategory && activeCategory !== 'all') {
+                    handleCategoryClick(activeCategory);
+                } else {
+                    filteredVideos = [...allVideos];
+                    displayVideos(filteredVideos);
+                }
+            } else {
+                // Filter all videos by search term
+                if (Array.isArray(allVideos)) {
+                    filteredVideos = allVideos.filter(video => 
+                        video && video.title && video.title.toLowerCase().includes(searchTerm)
+                    );
+                } else {
+                    console.error('allVideos is not an array:', allVideos);
+                    filteredVideos = [];
+                }
+                
+                // Reset category selection
+                const categoryBtns = document.querySelectorAll('.category-btn');
+                categoryBtns.forEach(btn => {
+                    btn.classList.remove('bg-red-500', 'text-white');
+                    btn.classList.add('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+                });
+                
+                // Set "All" button as active
+                const allBtn = document.querySelector('[data-id="all"]');
+                if (allBtn) {
+                    allBtn.classList.add('bg-red-500', 'text-white');
+                    allBtn.classList.remove('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+                }
+                
+                activeCategory = 'all';
+                
+                // Apply sorting if it was active
+                if (isSorted) {
+                    sortVideosByViews();
+                } else {
+                    displayVideos(filteredVideos);
+                }
+            }
+        }
+
+        function handleSort() {
+            isSorted = !isSorted;
+            
+            if (isSorted) {
+                sortBtn.classList.add('bg-red-500', 'text-white');
+                sortBtn.classList.remove('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+                sortVideosByViews();
+            } else {
+                sortBtn.classList.remove('bg-red-500', 'text-white');
+                sortBtn.classList.add('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+                
+                // Restore original order based on active category
+                if (activeCategory && activeCategory !== 'all') {
+                    handleCategoryClick(activeCategory);
+                } else {
+                    filteredVideos = [...allVideos];
+                    displayVideos(filteredVideos);
+                }
+            }
+        }
+
+        function sortVideosByViews() {
+            if (!filteredVideos || filteredVideos.length === 0) return;
+            
+            filteredVideos.sort((a, b) => {
+                if (!a || !a.others || !a.others.views || !b || !b.others || !b.others.views) {
+                    return 0;
+                }
+                
+                const viewsA = parseInt(a.others.views.replace('K', '000'));
+                const viewsB = parseInt(b.others.views.replace('K', '000'));
+                return viewsB - viewsA; // Sort in descending order
+            });
+            
+            displayVideos(filteredVideos);
+        }
+    </script>
+</body>
+</html>
